@@ -1,0 +1,17 @@
+{
+  "name": "carta-astral-app",
+  "version": "1.0.0",
+  "description": "Generador de Carta Astral personalizado y preciso.",
+  "main": "api/generate-astral-chart.js",
+  "scripts": {
+    "start": "vercel dev"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.11.0"
+  },
+  "devDependencies": {
+    "vercel": "^32.0.0"
+  }
+}
+
+

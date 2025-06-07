@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generador de Carta Astral - Tu Guía Personal de Luz</title>
+    
+    <!-- Tailwind CSS CDN para estilos modernos y responsivos -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts - Inter para una tipografía limpia y moderna -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Font Awesome CDN para iconos -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+
+    <!-- ¡IMPORTANTE! React, ReactDOM y Marked.js CDN para que la aplicación funcione -->
+    <!-- React y ReactDOM DEBEN cargarse PRIMERO para que JSX funcione -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- Babel DEBE cargarse DESPUÉS de React/ReactDOM para transformar el JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Marked.js para renderizar Markdown, puede cargarse antes de tu script principal -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.0.12/marked.min.js"></script>
+
+    <style>
+        /* Estilo personalizado para la fuente Inter */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Estilos para el contenido generado por el LLM (Markdown) */
+        .prose {
+            font-size: 1.125rem; /* text-lg */
+            line-height: 1.75rem; /* leading-relaxed */
+            color: #374151; /* text-gray-800 */
+        }
+        .prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 {
+            color: #6B46C1; /* purple-700 */
+            font-weight: 700; /* font-bold */
+            margin-top: 1.5em;
+            margin-bottom: 0.5em;
+        }
+        .prose p {
+            margin-bottom: 1em;
+        }
+        .prose ul, .prose ol {
+            margin-left: 1.5em;
+            margin-bottom: 1em;
+            list-style-position: inside; /* Para que los bullets estén dentro del texto */
+        }
+        .prose ul li, .prose ol li {
+            margin-bottom: 0.5em;
+        }
+        .prose strong {
+            font-weight: 600; /* font-semibold */
+        }
+        /* Animación para el spinner de carga */
+        .animate-spin {
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        /* Estilos específicos para impresión */
+        @media print {
+            body > *:not(#root) {
+                display: none !important; /* Oculta todo excepto el contenido de la app */
+            }
+            #root {
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            .bg-gradient-to-br, .shadow-2xl, .border-purple-100, .form-container, .button-container, .action-buttons-container, .footer-message, .rating-section, .thank-you-popup {
+                box-shadow: none !important;
+                border: none !important;
+                background: none !important;
+            }
+            .prose {
+                color: black !important; /* Asegura texto negro para impresión */
+            }
+            .prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 {
+                color: black !important; /* Asegura títulos negros para impresión */
+            }
+            /* Ocultar formulario y botones de acción en la impresión */
+            form, .action-buttons-container, .footer-message, .rating-section, .thank-you-popup {
+                display: none !important;
+            }
+            /* Asegurar que solo el contenido generado se imprima */
+            .chart-result-container {
+                width: 100%;
+                margin: 0;
+                padding: 0;
+                box-shadow: none;
+                border: none;
+                background: none;
+            }
+        }
+        /* Estilos para el pop-up de agradecimiento */
+        .thank-you-popup {
+            background-size: cover;
+            background-position: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            color: white;
+            padding: 2rem;
+            animation: fadeIn 0.5s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .thank-you-popup-close-button {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            border-radius: 50%;
+            width: 2.5rem;
+            height: 2.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            color: white;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+        .thank-you-popup-close-button:hover {
+            background: rgba(255, 255, 255, 0.4);
+        }
+    </style>
+</head>
+<body class="font-inter">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // Log de inicio del script principal
+        console.log("Script principal de Generador de Carta Astral cargando...");
+
+        // Importar hooks de React
+        const { useState } = React;
+
+        // Componente principal de la aplicación
+        const App = () => {
+            console.log("Componente App de Generador de Carta Astral renderizando...");
+
+            // --- Estados para los datos de entrada del usuario ---
+            const [birthDate, setBirthDate] = useState(''); // Fecha de nacimiento
+            const [birthTime, setBirthTime] = useState(''); // Hora de nacimiento
+            const [birthPlace, setBirthPlace] = useState(''); // Lugar de nacimiento
+            const [language, setLanguage] = useState('es'); // Idioma de la interpretación (por defecto español)
+
+            // --- Estados para la gestión de la interpretación y UI ---
+            const [chartData, setChartData] = useState(null);    // Datos de la carta astral generados por el LLM
+            const [isLoading, setIsLoading] = useState(false);   // Indicador de carga para la UI
+            const [error, setError] = useState(null);            // Mensajes de error para el usuario
+            const [showThankYouPopup, setShowThankYouPopup] = useState(false); // Control para mostrar el pop-up de agradecimiento
+            const [hasShownThankYou, setHasShownThankYou] = useState(false); // Control para mostrar el pop-up solo una vez por carta generada
+
+            // --- Objeto para las traducciones de la interfaz de usuario ---
+            const translations = {
+                es: {
+                    title: 'Generador de Carta Astral',
+                    subtitle: 'Descubre tu mapa cósmico personal de luz y crecimiento',
+                    headerMessage: 'Una parte de ti conoce lo que el mundo le ha dicho, hay una parte que aún desconoce la verdad sobre sí misma. Accede a tu carta astral y desbloquea todo tu potencial.',
+                    birthDateLabel: 'Fecha de Nacimiento:',
+                    birthTimeLabel: 'Hora de Nacimiento:',
+                    birthPlaceLabel: 'Lugar de Nacimiento:',
+                    languageLabel: 'Idioma:',
+                    spanish: 'Español',
+                    english: 'Inglés',
+                    generateChart: 'Generar Mi Guía Astral',
+                    loading: 'Desvelando los secretos de tu alma...',
+                    error: '¡Oh no! Parece que hubo un pequeño desvío cósmico. Por favor, revisa tus datos e intenta de nuevo.',
+                    apiError: '¡Un momento de turbulencia astral! No pudimos conectar con el universo. Verifica tu conexión o intenta más tarde.',
+                    noData: '¡El universo espera tus datos! Introduce tu fecha, hora y lugar de nacimiento para empezar tu viaje.',
+                    chartResultTitle: 'Tu Carta Astral Personal: Un Viaje de Descubrimiento',
+                    placeholderDate: 'Selecciona tu fecha de nacimiento',
+                    placeholderTime: 'Selecciona tu hora de nacimiento',
+                    placeholderPlace: 'Ej: San Cristóbal, Venezuela',
+                    requiredFields: '¡Para trazar tu mapa, necesitamos todos los puntos estelares! Por favor, completa todos los campos.',
+                    printChart: 'Imprimir Carta',
+                    downloadText: 'Descargar como Texto',
+                    shareApp: 'Compartir la Guía Astral',
+                    tipApp: 'Dejar una Propina',
+                    shareMessage: '¡He descubierto mi mapa cósmico personal con esta increíble Guía Astral! ✨ Descubre el tuyo aquí:',
+                    tipMessage: '¿Te ha gustado tu viaje astral? Si esta guía te ha inspirado y aportado valor, considera dejar una pequeña propina. ¡Cada contribución impulsa más luz y conocimiento para todos! Gracias de corazón. ❤️',
+                    copyLink: 'Copiar Enlace',
+                    copied: '¡Enlace copiado!',
+                    shareOn: 'Compartir en:',
+                    footerMessage: 'La carta astral no es una información que alguien te dice, es la información que despierta tu saber intuitivo, un saber que proviene de haber germinado la semilla del Amor en ti y que ahora brota y crece ante la luz para florecer y embellecer tu mundo.',
+                    rateUsTitle: '¡Valora tu Experiencia!',
+                    rateUsMessage: 'Si esta guía ha resonado contigo y ha iluminado tu camino, te invitamos a dejar 5 estrellas y compartir un comentario desde tu riqueza y abundancia. Tu apoyo nos ayuda a seguir expandiendo esta luz.',
+                    thankYouMessage: '¡Gracias por querer ser mejor!',
+                    closePopup: 'Cerrar',
+                },
+                en: {
+                    title: 'Astrology Chart Generator',
+                    subtitle: 'Discover your personal cosmic map of light and growth',
+                    headerMessage: 'A part of you knows what the world has told it, there is a part that still ignores the truth about itself. Access your astral chart and unlock your full potential.',
+                    birthDateLabel: 'Birth Date:',
+                    birthTimeLabel: 'Birth Time:',
+                    birthPlaceLabel: 'Birth Place:',
+                    languageLabel: 'Language:',
+                    spanish: 'Spanish',
+                    english: 'English',
+                    generateChart: 'Generate My Astral Guide',
+                    loading: 'Unveiling your soul\'s secrets...',
+                    error: 'Oh no! It seems there was a small cosmic detour. Please check your data and try again.',
+                    apiError: 'A moment of astral turbulence! We couldn\'t connect with the universe. Please check your connection or try again later.',
+                    noData: 'The universe awaits your data! Enter your birth date, time, and place to begin your journey.',
+                    chartResultTitle: 'Your Personal Astrology Chart: A Journey of Discovery',
+                    placeholderDate: 'Select your birth date',
+                    placeholderTime: 'Select your birth time',
+                    placeholderPlace: 'Ex: San Cristobal, Venezuela',
+                    requiredFields: 'Please fill in all required fields to proceed.',
+                    printChart: 'Print Chart',
+                    downloadText: 'Download as Text',
+                    shareApp: 'Share Astral Guide',
+                    tipApp: 'Leave a Tip',
+                    shareMessage: 'I\'ve discovered my personal cosmic map with this amazing Astral Guide! ✨ Discover yours here:',
+                    tipMessage: 'Did you enjoy your astral journey? If this guide has inspired you and provided value, please consider leaving a small tip. Every contribution fuels more light and knowledge for everyone! Thank you from the heart. ❤️',
+                    copyLink: 'Copy Link',
+                    copied: 'Link copied!',
+                    shareOn: 'Share on:',
+                    footerMessage: 'The astral chart is not information someone tells you; it is information that awakens your intuitive knowing, a knowing that comes from having germinated the seed of Love within you, and which now sprouts and grows towards the light to blossom and beautify your world.',
+                    rateUsTitle: 'Rate Your Experience!',
+                    rateUsMessage: 'If this guide has resonated with you and illuminated your path, we invite you to leave 5 stars and share a comment from your richness and abundance. Your support helps us continue to spread this light.',
+                    thankYouMessage: 'Thank you for wanting to be better!',
+                    closePopup: 'Close',
+                },
+            };
+
+            // Función para obtener el texto traducido según el idioma seleccionado
+            const getText = (key) => translations[language][key] || key;
+
+            // --- Función para manejar el envío del formulario y la llamada a la API ---
+            const handleSubmit = async (e) => {
+                e.preventDefault(); // Prevenir el comportamiento por defecto del formulario
+
+                console.log("handleSubmit iniciado."); // Log de inicio
+
+                // Validar que todos los campos requeridos estén llenos
+                if (!birthDate || !birthTime || !birthPlace) {
+                    setError(getText('requiredFields'));
+                    setChartData(null); // Limpiar datos previos si hay error
+                    console.log("Error: Campos requeridos faltantes."); // Log de error
+                    return; // Detener la ejecución si faltan campos
+                }
+
+                // Resetear estados antes de una nueva solicitud
+                setIsLoading(true); // Activar el indicador de carga
+                setError(null);      // Limpiar errores previos
+                setChartData(null);  // Limpiar datos previos de la carta
+                setShowThankYouPopup(false); // Asegurarse de que el pop-up no esté visible al iniciar una nueva generación
+                setHasShownThankYou(false); // Reiniciar el control para el pop-up en una nueva carta
+                console.log("Estado de carga activado, errores y datos limpiados.");
+
+                try {
+                    // Construir el prompt detallado para el modelo de lenguaje (Gemini)
+                    const prompt = `Based on a person born on ${birthDate} at ${birthTime} in ${birthPlace}, generate a comprehensive astrological chart reading.
+                    
+                    The interpretation should be structured with the following 28 distinct headings, in this exact order. For each section, adopt a narrative and psychologically engaging style, using elements like "Érase una vez", "Todos los días", "Un día", "Por este motivo", "Debido a ello", "Hasta que". Incorporate metaphors, parables, and paradoxes. Speak directly to the reader ("tú"), aiming to engage the instinctive, limbic, and neocortical brain. Use Neuro-Linguistic Programming (NLP) principles to inspire, capture full attention, and motivate personal growth, fostering a happy, pleasant, mentally, and psychologically enriching sensation for the reader. Include practical tools and techniques for sections 27 and 28.
+
+                    1.  Los Componentes Fundamentales de tu Carta Astral
+                    2.  La Interpretación de tu Carta Astral: Un Viaje Personal
+                    3.  Beneficios de Conocer tu Carta Astral: Tu Poder Interior
+                    4.  Análisis Completo, Profundo y Detallado de tu Mapa Cósmico
+                    5.  Síntesis General de tu Perfil Astrológico: Tu Esencia Única
+                    6.  La Dinámica de la Armonía: Integrando tus Luces
+                    7.  Un Enfoque Positivo para la Pasión y la Vida: Tu Energía Radiante
+                    8.  La Sexualidad: Un Viaje de Conexión Profunda y Placer
+                    9.  La Pareja Ideal: El Espejo de tu Alma
+                    10. El Aspecto Social: Tu Brillo en la Conexión Humana
+                    11. El Aspecto Laboral: Tu Propósito en Acción
+                    12. El Aspecto Artístico: La Danza de tu Creatividad
+                    13. El Ego: Tu Guardián y Maestro Interior
+                    14. El Verdadero Yo: La Voz de tu Alma
+                    15. Sanar la Herida (Quirón): Abrazando tu Poder de Transformación
+                    16. El Viaje del Alma: Tu Sendero Evolutivo
+                    17. El Viaje del Alma por Edad y Años en el Mundo: Tu Crecimiento Constante
+                    18. El Propósito de Vida y del Mundo: Tu Huella Cósmica
+                    19. El Amor en la Carta Astral: Un Universo de Conexiones
+                    20. La Salud: Tu Templo Sagrado y Vibrante
+                    21. El Aspecto Deportivo y el Ejercicio: La Alegría del Movimiento
+                    22. El Dinero, Finanzas y Emprendimiento: Fluyendo con la Abundancia
+                    23. Espiritualidad y Conexión Divina: Tu Puente con lo Infinito
+                    24. Proyección Futura y Conexión Angelical: Tu Destino Luminoso
+                    25. Lujos Materiales, Turismo, Hogar y Estilo Personal: Celebrando la Vida
+                    26. Vidas Pasadas: Los Ecos de tu Sabiduría Ancestral
+                    27. Técnicas para Sanar la Herida: Herramientas para tu Florecimiento
+                    28. Trascender la Furia del Ego a la Paz del Amor: Un Camino de Maestría
+
+                    Respond entirely in ${language === 'es' ? 'Spanish' : 'English'}.`;
+                    console.log("Prompt para la API generado.");
+
+                    // Preparar el payload para la llamada a la API de Gemini
+                    const chatHistory = [{ role: "user", parts: [{ text: prompt } ] }];
+                    const payload = { contents: chatHistory };
+
+                    // ¡IMPORTANTE! Reemplaza "" con tu clave API real si la alojas externamente.
+                    // Si lo ejecutas en un entorno como Canvas, déjalo vacío, ya que Canvas la inyecta.
+                    const apiKey = ""; // <<-- ¡PON TU CLAVE API REAL AQUÍ!
+                    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+                    console.log("Realizando llamada a la API de Gemini...");
+                    // Realizar la llamada a la API usando fetch
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    console.log("Respuesta de la API recibida. Estado:", response.status, response.statusText);
+
+                    // Verificar si la respuesta de la red fue exitosa (código 200-299)
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        console.error('Error de la API (respuesta no OK):', errorData);
+                        throw new Error(errorData.error?.message || `HTTP error! status: ${response.status}`);
+                    }
+
+                    console.log("Procesando respuesta JSON de la API...");
+                    // Procesar la respuesta JSON
+                    const result = await response.json();
+                    console.log("Resultado de la API procesado:", result);
+
+                    // Verificar la estructura esperada de la respuesta del LLM
+                    if (result.candidates && result.candidates.length > 0 &&
+                        result.candidates[0].content && result.candidates[0].content.parts &&
+                        result.candidates[0].content.parts.length > 0) {
+                        const text = result.candidates[0].content.parts[0].text;
+                        setChartData(text); // Almacenar la interpretación generada
+                        console.log("Carta astral generada y estado actualizado correctamente.");
+                    } else {
+                        // Manejar casos donde la estructura de la respuesta es inesperada o el contenido falta
+                        setError(getText('error')); // Mensaje genérico para el usuario
+                        console.error('Estructura de respuesta de la API inesperada o contenido vacío:', result);
+                        console.log("Error: Estructura de respuesta de la API inesperada.");
+                    }
+                } catch (err) {
+                    // Capturar y mostrar errores de la red o de la API
+                    setError(getText('apiError')); // Mensaje general para el usuario
+                    console.error('Fallo al obtener la carta astral (bloque catch):', err); // Detalle técnico para depuración
+                    console.log("Error en el bloque try-catch. Mensaje de error:", err.message);
+                } finally {
+                    setIsLoading(false); // Desactivar el indicador de carga siempre
+                    console.log("Estado de carga desactivado. handleSubmit finalizado.");
+                }
+            };
+
+            // --- Funciones para los botones de acción ---
+
+            // Función para manejar la impresión de la carta
+            const handlePrint = () => {
+                window.print(); // Abre el diálogo de impresión del navegador
+                // Mostrar pop-up solo si no se ha mostrado para esta carta
+                if (!hasShownThankYou) {
+                    setShowThankYouPopup(true);
+                    setHasShownThankYou(true); // Marcar que ya se mostró
+                }
+            };
+
+            // Función para manejar la descarga del contenido como archivo de texto/markdown
+            const handleDownload = () => {
+                if (!chartData) return; // No descargar si no hay datos
+
+                const filename = `CartaAstral_${birthDate}_${birthTime}.md`; // Nombre del archivo
+                const blob = new Blob([chartData], { type: 'text/markdown;charset=utf-8' }); // Crear un Blob con el contenido
+                const url = URL.createObjectURL(blob); // Crear una URL para el Blob
+
+                const a = document.createElement('a'); // Crear un elemento <a> temporal
+                a.href = url;
+                a.download = filename; // Asignar el nombre del archivo para la descarga
+                document.body.appendChild(a); // Añadir el <a> al DOM (necesario para Firefox)
+                a.click(); // Simular clic en el <a> para iniciar la descarga
+                document.body.removeChild(a); // Eliminar el <a> del DOM
+                URL.revokeObjectURL(url); // Liberar la URL del Blob
+                // Mostrar pop-up solo si no se ha mostrado para esta carta
+                if (!hasShownThankYou) {
+                    setShowThankYouPopup(true);
+                    setHasShownThankYou(true); // Marcar que ya se mostró
+                }
+            };
+
+            // Función para manejar el botón de compartir (copiar enlace)
+            const handleShare = async () => {
+                const shareUrl = window.location.href; // URL de la aplicación actual
+                const shareText = getText('shareMessage');
+
+                if (navigator.share) {
+                    // Usar Web Share API si está disponible (para móviles)
+                    try {
+                        await navigator.share({
+                            title: getText('title'),
+                            text: shareText,
+                            url: shareUrl,
+                        });
+                        console.log('Contenido compartido con éxito usando Web Share API.');
+                        if (!hasShownThankYou) {
+                            setShowThankYouPopup(true);
+                            setHasShownThankYou(true);
+                        }
+                    } catch (error) {
+                        console.error('Error al compartir con Web Share API:', error);
+                    }
+                } else {
+                    // Fallback para navegadores que no soportan Web Share API (escritorio)
+                    console.log('Web Share API no soportada. Intentando copiar al portapapeles.');
+                    try {
+                        const tempInput = document.createElement('textarea');
+                        tempInput.value = shareUrl;
+                        document.body.appendChild(tempInput);
+                        tempInput.select();
+                        document.execCommand('copy'); // Usar execCommand para mayor compatibilidad en iframes
+                        document.body.removeChild(tempInput);
+                        console.log(getText('copied')); // Usar console.log en lugar de alert
+                        if (!hasShownThankYou) {
+                            setShowThankYouPopup(true);
+                            setHasShownThankYou(true);
+                        }
+                    } catch (err) {
+                        console.error('Error al copiar el enlace:', err);
+                        console.log('No se pudo copiar el enlace automáticamente. Por favor, cópialo manualmente: ' + shareUrl); // Usar console.log
+                    }
+                }
+            };
+
+            // Función para manejar el botón de propinas (abre PayPal en nueva pestaña)
+            const handleTip = () => {
+                // ¡IMPORTANTE! Reemplaza esta URL con tu propio enlace de PayPal.me
+                const tipUrl = "https://paypal.me/tuusuario"; // <<-- ¡PON TU ENLACE REAL DE PAYPAL.ME AQUÍ!
+                window.open(tipUrl, '_blank'); // Abre el enlace en una nueva pestaña
+                // Mostrar pop-up solo si no se ha mostrado para esta carta
+                if (!hasShownThankYou) {
+                    setShowThankYouPopup(true);
+                    setHasShownThankYou(true); // Marcar que ya se mostró
+                }
+            };
+
+            // --- Renderizado de la interfaz de usuario ---
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-purple-100 to-blue-200 flex items-center justify-center p-4 py-8 relative">
+                    <div className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-4xl lg:max-w-6xl border border-purple-100">
+                        {/* Título principal de la aplicación */}
+                        <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-center text-purple-800 mb-4 font-inter leading-tight">
+                            {getText('title')}
+                        </h1>
+                        {/* Subtítulo de la aplicación */}
+                        <p className="text-lg sm:text-xl text-center text-gray-600 mb-10 font-inter">
+                            {getText('subtitle')}
+                        </p>
+
+                        {/* Mensaje de encabezado inspirador */}
+                        <p className="text-center text-purple-700 text-xl sm:text-2xl font-semibold mb-8 px-4 leading-relaxed">
+                            {getText('headerMessage')}
+                        </p>
+
+                        {/* Formulario de entrada de datos del usuario */}
+                        <form onSubmit={handleSubmit} className="space-y-6 mb-8 form-container">
+                            {/* Campo de Fecha de Nacimiento */}
+                            <div>
+                                <label htmlFor="birthDate" className="block text-lg font-semibold text-gray-700 mb-2">
+                                    {getText('birthDateLabel')}
+                                </label>
+                                <input
+                                    type="date"
+                                    id="birthDate"
+                                    className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-purple-500 focus:border-purple-500 sm:text-base text-gray-800 transition duration-300 ease-in-out transform hover:scale-[1.005]"
+                                    value={birthDate}
+                                    onChange={(e) => setBirthDate(e.target.value)}
+                                    required
+                                    aria-label={getText('placeholderDate')}
+                                />
+                            </div>
+
+                            {/* Campo de Hora de Nacimiento */}
+                            <div>
+                                <label htmlFor="birthTime" className="block text-lg font-semibold text-gray-700 mb-2">
+                                    {getText('birthTimeLabel')}
+                                </label>
+                                <input
+                                    type="time"
+                                    id="birthTime"
+                                    className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-purple-500 focus:border-purple-500 sm:text-base text-gray-800 transition duration-300 ease-in-out transform hover:scale-[1.005]"
+                                    value={birthTime}
+                                    onChange={(e) => setBirthTime(e.target.value)}
+                                    required
+                                    aria-label={getText('placeholderTime')}
+                                />
+                            </div>
+
+                            {/* Campo de Lugar de Nacimiento */}
+                            <div>
+                                <label htmlFor="birthPlace" className="block text-lg font-semibold text-gray-700 mb-2">
+                                    {getText('birthPlaceLabel')}
+                                </label>
+                                <input
+                                    type="text"
+                                    id="birthPlace"
+                                    className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-purple-500 focus:border-purple-500 sm:text-base text-gray-800 transition duration-300 ease-in-out transform hover:scale-[1.005]"
+                                    value={birthPlace}
+                                    onChange={(e) => setBirthPlace(e.target.value)}
+                                    placeholder={getText('placeholderPlace')}
+                                    required
+                                    aria-label={getText('placeholderPlace')}
+                                />
+                            </div>
+
+                            {/* Selector de Idioma */}
+                            <div>
+                                <label htmlFor="language" className="block text-lg font-semibold text-gray-700 mb-2">
+                                    {getText('languageLabel')}
+                                </label>
+                                <select
+                                    id="language"
+                                    className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-purple-500 focus:border-purple-500 sm:text-base text-gray-800 transition duration-300 ease-in-out transform hover:scale-[1.005]"
+                                    value={language}
+                                    onChange={(e) => setLanguage(e.target.value)}
+                                    aria-label={getText('languageLabel')}
+                                >
+                                    <option value="es">{getText('spanish')}</option>
+                                    <option value="en">{getText('english')}</option>
+                                </select>
+                            </div>
+
+                            {/* Botón de Generar Carta Astral */}
+                            <button
+                                type="submit"
+                                className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 text-lg flex items-center justify-center"
+                                disabled={isLoading}
+                            >
+                                {isLoading ? (
+                                    <>
+                                        <i className="fas fa-spinner animate-spin mr-3"></i>
+                                        {getText('loading')}
+                                    </>
+                                ) : (
+                                    <>
+                                        <i className="fas fa-magic mr-3"></i> {/* Icono de magia/generación */}
+                                        {getText('generateChart')}
+                                    </>
+                                )}
+                            </button>
+                        </form>
+
+                        {/* Área de visualización de errores y mensajes de estado */}
+                        {error && (
+                            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative mb-6 text-center shadow-inner" role="alert">
+                                <i className="fas fa-exclamation-triangle mr-2"></i>
+                                <strong className="font-bold">¡Error!</strong>
+                                <span className="block sm:inline"> {error}</span>
+                            </div>
+                        )}
+
+                        {!isLoading && !chartData && !error && (
+                            <p className="text-center text-gray-600 text-lg py-4">
+                                <i className="fas fa-star-of-life mr-2 text-purple-500"></i>
+                                {getText('noData')}
+                            </p>
+                        )}
+
+                        {/* Contenedor de la carta astral generada */}
+                        {chartData && (
+                            <div className="bg-purple-50 p-6 rounded-xl shadow-inner border border-purple-200 mt-8 chart-result-container">
+                                <h2 className="text-3xl sm:text-4xl font-bold text-purple-700 mb-6 text-center font-inter">
+                                    {getText('chartResultTitle')}
+                                </h2>
+                                {/* Renderizar el contenido de la carta astral. Usamos dangerouslySetInnerHTML porque el LLM devuelve Markdown. */}
+                                <div
+                                    className="prose prose-lg max-w-none text-gray-800 leading-relaxed"
+                                    dangerouslySetInnerHTML={{ __html: marked.parse(chartData) }}
+                                ></div>
+
+                                {/* Contenedor de botones de acción */}
+                                <div className="mt-8 flex flex-col sm:flex-row sm:justify-between space-y-4 sm:space-y-0 sm:space-x-4 action-buttons-container">
+                                    <button
+                                        onClick={handlePrint}
+                                        className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 text-base flex items-center justify-center"
+                                    >
+                                        <i className="fas fa-print mr-2"></i>
+                                        {getText('printChart')}
+                                    </button>
+                                    <button
+                                        onClick={handleDownload}
+                                        className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2 text-base flex items-center justify-center"
+                                    >
+                                        <i className="fas fa-download mr-2"></i>
+                                        {getText('downloadText')}
+                                    </button>
+                                    <button
+                                        onClick={handleShare}
+                                        className="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:ring-offset-2 text-base flex items-center justify-center"
+                                    >
+                                        <i className="fas fa-share-alt mr-2"></i>
+                                        {getText('shareApp')}
+                                    </button>
+                                    <button
+                                        onClick={handleTip}
+                                        className="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:ring-offset-2 text-base flex items-center justify-center"
+                                    >
+                                        <i className="fas fa-paypal mr-2"></i> {/* Icono de PayPal */}
+                                        {getText('tipApp')}
+                                    </button>
+                                </div>
+                                {/* Mensaje inspirador para la propina */}
+                                <p className="text-center text-gray-600 text-sm sm:text-base mt-6 italic">
+                                    {getText('tipMessage')}
+                                </p>
+
+                                {/* Sección de Valoración */}
+                                <div className="rating-section mt-10 text-center p-6 bg-purple-100 rounded-xl shadow-md border border-purple-200">
+                                    <h3 className="text-2xl font-bold text-purple-700 mb-4">
+                                        {getText('rateUsTitle')}
+                                    </h3>
+                                    <p className="text-gray-700 mb-4">
+                                        {getText('rateUsMessage')}
+                                    </p>
+                                    {/* Aquí podrías añadir iconos de estrellas si lo deseas, pero no son funcionales sin backend */}
+                                    <div className="text-yellow-500 text-3xl">
+                                        <i className="fas fa-star"></i>
+                                        <i className="fas fa-star"></i>
+                                        <i className="fas fa-star"></i>
+                                        <i className="fas fa-star"></i>
+                                        <i className="fas fa-star"></i>
+                                    </div>
+                                </div>
+
+                            </div>
+                        )}
+
+                        {/* Pie de página inspirador */}
+                        <p className="footer-message text-center text-gray-600 text-base sm:text-lg mt-10 italic px-4 leading-relaxed">
+                            {getText('footerMessage')}
+                        </p>
+                    </div>
+
+                    {/* Pop-up de agradecimiento (sin imagen de fondo) */}
+                    {showThankYouPopup && (
+                        <div
+                            className="thank-you-popup fixed inset-0 bg-black bg-opacity-75 z-50"
+                            style={{ /* backgroundImage ha sido eliminado según la solicitud del usuario */ }}
+                        >
+                            <button
+                                onClick={() => {
+                                    setShowThankYouPopup(false);
+                                }}
+                                className="thank-you-popup-close-button"
+                                aria-label={getText('closePopup')}
+                            >
+                                ×
+                            </button>
+                            <h2 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-white mb-4 drop-shadow-lg">
+                                {getText('thankYouMessage')}
+                            </h2>
+                            <p className="text-xl sm:text-2xl text-white drop-shadow-md">
+                                {/* Puedes añadir un mensaje adicional si lo deseas */}
+                            </p>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // Montar la aplicación React en el elemento 'root' del DOM
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+</body>
+</html>
+
+
