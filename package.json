@@ -7,7 +7,8 @@
     "start": "vercel dev"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.11.0"
+    "@google/generative-ai": "^0.11.0",
+    "astrology": "^0.1.1"  // Nueva dependencia para cálculos astrológicos
   },
   "devDependencies": {
     "vercel": "^32.0.0"

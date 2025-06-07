@@ -2,6 +2,8 @@
 
 // Importa la librería de Google Generative AI para interactuar con Gemini.
 const { GoogleGenerativeLanguageServiceClient } = require('@google/generative-ai');
+// Importa la librería 'astrology' para realizar cálculos astrológicos directamente.
+const Astrology = require('astrology');
 
 // Configura el cliente para la API de Gemini (para la generación de texto).
 const genAI = new GoogleGenerativeLanguageServiceClient({
@@ -16,7 +18,7 @@ const TEXT_MODEL_NAME = "gemini-2.0-flash";
 
 /**
  * Función principal sin servidor que maneja las solicitudes del frontend para generar la carta astral.
- * Orquesta las llamadas a APIs de geocodificación, zona horaria y cálculo astrológico,
+ * Orquesta las llamadas a APIs de geocodificación, zona horaria y realiza cálculos astrológicos con una librería,
  * y luego utiliza Gemini para interpretar los datos precisos.
  * * @param {object} req - Objeto de solicitud HTTP (contiene el cuerpo con los datos del usuario).
  * @param {object} res - Objeto de respuesta HTTP (para enviar la carta astral generada al frontend).
@@ -25,14 +27,11 @@ module.exports = async (req, res) => {
     console.log("Función sin servidor 'generate-astral-chart' llamada.");
 
     // Configura los encabezados CORS (Cross-Origin Resource Sharing)
-    // Esto es crucial para permitir que tu frontend (probablemente en GitHub Pages)
-    // pueda comunicarse con esta función sin servidor (en Vercel).
     res.setHeader('Access-Control-Allow-Origin', 'https://pablopavlov.github.io'); // Permite solicitudes desde tu dominio de GitHub Pages
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS'); // Define los métodos HTTP permitidos
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type'); // Define los encabezados HTTP permitidos en la solicitud
 
     // Maneja las solicitudes OPTIONS (preflight requests de CORS).
-    // El navegador envía una solicitud OPTIONS antes de la solicitud POST real para verificar los permisos CORS.
     if (req.method === 'OPTIONS') {
         console.log("Solicitud OPTIONS (CORS preflight) recibida. Respondiendo 200 OK.");
         return res.status(200).end(); // Termina la respuesta OPTIONS
@@ -44,18 +43,14 @@ module.exports = async (req, res) => {
         return res.status(405).json({ message: 'Método no permitido. Solo se aceptan solicitudes POST.' });
     }
 
-    // Verifica que todas las claves API necesarias estén configuradas como variables de entorno en Vercel.
+    // Verifica que las claves API necesarias estén configuradas como variables de entorno en Vercel.
     if (!process.env.GEMINI_API_KEY) {
         console.error('Error: GEMINI_API_KEY no configurada en las variables de entorno de Vercel.');
         return res.status(500).json({ message: 'Error interno del servidor: Clave API GEMINI_API_KEY no configurada.' });
     }
-    if (!process.env.TIMEZONEDB_API_KEY) {
-        console.error('Error: TIMEZONEDB_API_KEY no configurada en las variables de entorno de Vercel.');
-        return res.status(500).json({ message: 'Error interno del servidor: Clave API TIMEZONEDB_API_KEY no configurada.' });
-    }
-    if (!process.env.ASTRO_API_KEY) { // ¡REEMPLAZAR con el nombre de tu variable de entorno para la API de cálculo astrológico!
-        console.error('Error: ASTRO_API_KEY no configurada en las variables de entorno de Vercel.');
-        return res.status(500).json({ message: 'Error interno del servidor: Clave API ASTRO_API_KEY no configurada.' });
+    if (!process.env.GOOGLE_MAPS_API_KEY) { 
+        console.error('Error: GOOGLE_MAPS_API_KEY no configurada en las variables de entorno de Vercel.');
+        return res.status(500).json({ message: 'Error interno del servidor: Clave API GOOGLE_MAPS_API_KEY no configurada.' });
     }
 
     try {
@@ -68,16 +63,16 @@ module.exports = async (req, res) => {
         }
 
         let latitude, longitude;
-        let timezoneId, rawOffsetSeconds, dstOffsetSeconds;
+        let timezoneId, rawOffsetSeconds; // Eliminamos dstOffsetSeconds ya que Google Time Zone API consolida en rawOffset
         let finalAstroData = {}; // Objeto para almacenar los datos astrológicos precisos.
 
         // --- 1. LLAMADA A LA API DE GEOCODIFICACIÓN (OpenStreetMap Nominatim) ---
         console.log(`Intentando geocodificar lugar con Nominatim: ${birthPlace}`);
         const nominatimUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(birthPlace)}&limit=1`;
         try {
-            // Es CRÍTICO incluir un User-Agent significativo para Nominatim, de lo contrario, puede bloquearte.
             const nominatimResponse = await fetch(nominatimUrl, {
                 headers: {
+                    // Es CRÍTICO incluir un User-Agent significativo para Nominatim, de lo contrario, puede bloquearte.
                     'User-Agent': 'CartaAstralApp/1.0 (ppastorguerra@gmail.com)' 
                 }
             });
@@ -99,11 +94,10 @@ module.exports = async (req, res) => {
             return res.status(500).json({ message: `Error al conectar con el servicio de geocodificación. Detalles: ${error.message}` });
         }
 
-        // --- 2. LLAMADA A LA API DE ZONA HORARIA (TimezoneDB) ---
-        console.log(`Intentando obtener zona horaria con TimezoneDB para Lat ${latitude}, Lng ${longitude}`);
-        const timezoneDbApiKey = process.env.TIMEZONEDB_API_KEY;
-        // Convierte la fecha y hora de nacimiento a un timestamp Unix en segundos UTC.
-        // Se asume que birthTime es en formato "HH:MM".
+        // --- 2. LLAMADA A LA API DE ZONA HORARIA (Google Maps Time Zone API) ---
+        console.log(`Intentando obtener zona horaria con Google Maps Time Zone API para Lat ${latitude}, Lng ${longitude}`);
+        const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY; // Usa la nueva clave de Google Maps Platform
+
         const localDateTimeString = `${birthDate}T${birthTime}:00`; // Asegura formato ISO para Date
         const localDate = new Date(localDateTimeString);
 
@@ -111,141 +105,117 @@ module.exports = async (req, res) => {
             console.error(`Error de parseo de fecha/hora: ${birthDate}T${birthTime}`);
             return res.status(400).json({ message: 'Formato de fecha u hora de nacimiento inválido.' });
         }
-
         const timestamp = Math.floor(localDate.getTime() / 1000); // Unix timestamp en segundos
 
-        const timezoneDbUrl = `http://api.timezonedb.com/v2.1/get-time-zone?key=${timezoneDbApiKey}&format=json&by=position&lat=${latitude}&lng=${longitude}&time=${timestamp}`;
+        const googleTimeZoneUrl = `https://maps.googleapis.com/maps/api/timezone/json?location=${latitude},${longitude}&timestamp=${timestamp}&key=${googleMapsApiKey}`;
         try {
-            const timezoneResponse = await fetch(timezoneDbUrl);
+            const timezoneResponse = await fetch(googleTimeZoneUrl);
             if (!timezoneResponse.ok) {
-                throw new Error(`Error HTTP de TimezoneDB: ${timezoneResponse.status} - ${timezoneResponse.statusText}`);
+                throw new Error(`Error HTTP de Google Time Zone API: ${timezoneResponse.status} - ${timezoneResponse.statusText}`);
             }
             const timezoneData = await timezoneResponse.json();
 
             if (timezoneData.status === 'OK') {
-                timezoneId = timezoneData.zoneName; // Ej: America/Caracas
-                rawOffsetSeconds = timezoneData.gmtOffset; // Offset GMT en segundos (ya incluye DST si aplica para el timestamp)
-                dstOffsetSeconds = timezoneData.dst; // 0 si no hay DST, o la duración del DST en segundos
-                console.log(`Zona horaria exitosa: ${timezoneId}, GMT Offset: ${rawOffsetSeconds / 3600} horas, DST: ${dstOffsetSeconds / 3600} horas`);
+                timezoneId = timezoneData.timeZoneId; // Ej: America/Caracas
+                // Google Time Zone API devuelve el offset total (rawOffset + dstOffset) en segundos en 'dstOffset' si hay DST,
+                // o solo rawOffset si no hay DST. Para cálculos astrológicos, el offset total es lo que importa.
+                rawOffsetSeconds = timezoneData.dstOffset + timezoneData.rawOffset; 
+                console.log(`Zona horaria exitosa (Google Maps): ${timezoneId}, Offset Total: ${rawOffsetSeconds / 3600} horas`);
             } else {
-                console.error(`ERROR: No se pudo obtener la zona horaria para Lat ${latitude}, Lng ${longitude}. Error: ${timezoneData.message}`);
-                return res.status(404).json({ message: `No se pudo determinar la zona horaria precisa para el lugar y la fecha proporcionados. ${timezoneData.message}` });
+                console.error(`ERROR: No se pudo obtener la zona horaria para Lat ${latitude}, Lng ${longitude}. Error: ${timezoneData.errorMessage || 'Desconocido'}`);
+                return res.status(404).json({ message: `No se pudo determinar la zona horaria precisa para el lugar y la fecha proporcionados. ${timezoneData.errorMessage || ''}` });
             }
         } catch (error) {
-            console.error(`Error al obtener zona horaria con TimezoneDB para ${latitude}, ${longitude}:`, error.message);
-            return res.status(500).json({ message: `Error al conectar con el servicio de zona horaria. Detalles: ${error.message}` });
+            console.error(`Error al obtener zona horaria con Google Maps Time Zone API para ${latitude}, ${longitude}:`, error.message);
+            return res.status(500).json({ message: `Error al conectar con el servicio de zona horaria de Google. Detalles: ${error.message}` });
         }
 
-        // --- 3. LLAMADA A LA API DE CÁLCULO ASTROLÓGICO (Ejemplo: Astro-API.com) ---
-        console.log("Intentando obtener cálculos astrológicos con Astro-API.com...");
-        const astroApiKey = process.env.ASTRO_API_KEY; // Tu clave API para Astro-API.com
-        const astroApiUrl = 'https://api.astro-api.com/v1/chart'; // Endpoint de Astro-API.com
+        // --- 3. CÁLCULO ASTROLÓGICO (Utilizando la librería 'astrology') ---
+        console.log("Realizando cálculos astrológicos con la librería 'astrology'...");
+        
+        // Ajusta la fecha y hora a UTC utilizando el offset de la zona horaria obtenida.
+        // La librería 'astrology' espera la hora de nacimiento en UTC para los cálculos.
+        const birthDateTimeUTC = new Date(localDate.getTime() - rawOffsetSeconds * 1000);
 
-        // Los datos para la solicitud de la API astrológica
-        const astroApiRequestBody = {
-            datetime: {
-                year: parseInt(birthDate.substring(0, 4)),
-                month: parseInt(birthDate.substring(5, 7)),
-                day: parseInt(birthDate.substring(8, 10)),
-                hour: parseInt(birthTime.substring(0, 2)),
-                minute: parseInt(birthTime.substring(3, 5)),
-                second: 0, // Generalmente no se especifica
-                zone: rawOffsetSeconds / 3600 // Offset GMT en horas (ej. -5 para Caracas)
-            },
-            location: {
-                latitude: latitude,
-                longitude: longitude
-            },
-            settings: {
-                // Puedes ajustar estos si tu API lo permite y tu necesitas algo específico.
-                // Consulta la documentación de tu API de cálculo astrológico.
-                tropical: true, // Verdadero para astrología occidental (Zodiaco Tropical)
-                aspects: {
-                    conjunction: true, opposition: true, trine: true, square: true, sextile: true, // Aspectos principales
-                    // Puedes añadir más aspectos si tu API los soporta y Gemini los puede interpretar bien
-                    // quincunx: true, semisextile: true, quintile: true, biquintile: true, etc.
-                },
-                orb: {
-                    // Puedes ajustar los orbes si tu API lo permite.
-                    // Estos son orbes comunes.
-                    conjunction: 8, opposition: 8, trine: 8, square: 8, sextile: 6,
-                },
-                house_system: "placidus" // Sistema de casas común, puedes cambiarlo si prefieres otro (koch, whole_signs, etc.)
-            }
+        const year = birthDateTimeUTC.getFullYear();
+        const month = birthDateTimeUTC.getMonth() + 1; // getMonth() es 0-11
+        const day = birthDateTimeUTC.getDate();
+        const hour = birthDateTimeUTC.getHours();
+        const minute = birthDateTimeUTC.getMinutes();
+        const second = birthDateTimeUTC.getSeconds();
+
+        // Configuración para la librería 'astrology'
+        const astrology = new Astrology({
+            // Puedes ajustar el sistema de casas si lo deseas. Placidus es común.
+            // Más info en la documentación de la librería 'astrology'.
+            houseSystem: "placidus" 
+        });
+
+        // Realiza los cálculos de la carta natal
+        const chart = astrology.getChart({
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second,
+            latitude,
+            longitude
+        });
+
+        console.log("Cálculos astrológicos con 'astrology' completados.");
+        // console.log("Resultado del cálculo:", JSON.stringify(chart, null, 2)); // Para depuración
+
+        // --- Mapear la respuesta de la librería 'astrology' a un formato para Gemini ---
+        // Extraemos los datos relevantes de la estructura de 'chart' para el prompt de Gemini.
+        const planetsData = Object.keys(chart.planets).map(key => {
+            const planet = chart.planets[key];
+            // Asegurarse de que el signo y el grado existan.
+            const signName = planet.sign ? planet.sign.name : 'Desconocido';
+            const degree = planet.position ? planet.position.toFixed(2) : '0.00';
+            const houseNumber = planet.house ? planet.house.toFixed(0) : 'N/A'; // Número de casa como entero
+            return `${planet.name} en ${signName} a ${degree}° en Casa ${houseNumber}`;
+        }).join(', ');
+
+        const housesData = Object.keys(chart.houses).map(key => {
+            const house = chart.houses[key];
+            const signName = house.sign ? house.sign.name : 'Desconocido';
+            const degree = house.position ? house.position.toFixed(2) : '0.00';
+            return `Casa ${house.name} en ${signName} a ${degree}°`; // 'house.name' es el número de casa (1-12)
+        }).join(', ');
+        
+        // La librería 'astrology' no calcula aspectos tan detalladamente por defecto en su objeto principal
+        // Sin embargo, podemos inferirlos o generar una lista simple si la librería lo permite de otra forma.
+        // Para simplificar, si 'astrology' no da una lista de aspectos pre-calculados,
+        // Gemini puede inferir aspectos generales de las posiciones.
+        const aspectsData = "Aspectos derivados de las posiciones planetarias (interpretación de Gemini)";
+        // Si la librería 'astrology' tiene una función para aspectos, la usaríamos aquí y la formatearíamos.
+
+        finalAstroData = {
+            birthDate: birthDate,
+            birthTime: birthTime,
+            birthPlace: birthPlace,
+            userSex: userSex,
+            timezoneId: timezoneId,
+            rawOffsetHours: rawOffsetSeconds / 3600,
+            latitude: latitude,
+            longitude: longitude,
+            // Datos precisos de la librería de cálculo
+            sunSign: chart.planets.sun.sign ? chart.planets.sun.sign.name : 'Desconocido',
+            moonSign: chart.planets.moon.sign ? chart.planets.moon.sign.name : 'Desconocido',
+            ascendant: chart.houses.house1.sign ? chart.houses.house1.sign.name : 'Desconocido', // Ascendente es la cúspide de la Casa 1
+            planetsPositions: planetsData, 
+            housesCusps: housesData,      
+            keyAspects: aspectsData       
         };
 
-        try {
-            const astroApiResponse = await fetch(astroApiUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${astroApiKey}` // Astro-API.com usa Bearer Token
-                    // Algunas APIs pueden requerir 'x-api-key' en lugar de 'Authorization'
-                },
-                body: JSON.stringify(astroApiRequestBody)
-            });
-
-            if (!astroApiResponse.ok) {
-                const errorBody = await astroApiResponse.text(); // Lee el cuerpo del error para más detalles
-                throw new Error(`Error HTTP de Astro-API.com: ${astroApiResponse.status} - ${astroApiResponse.statusText}. Detalles: ${errorBody}`);
-            }
-
-            const astroCalcRawData = await astroApiResponse.json();
-            console.log("Datos astrológicos obtenidos de Astro-API.com:", JSON.stringify(astroCalcRawData, null, 2).substring(0, 500) + "..."); // Log de los datos (truncado)
-
-            // --- Mapear la respuesta de la API de cálculo astrológico a un formato para Gemini ---
-            // Esto es crucial y DEBE coincidir con la estructura REAL de la respuesta de la API que uses.
-            // El siguiente es un ejemplo basado en una estructura común de Astro-API.com.
-            
-            const planetsData = Object.keys(astroCalcRawData.data.planets).map(key => {
-                const planet = astroCalcRawData.data.planets[key];
-                return `${key} en ${planet.sign.name} a ${planet.degree}° en Casa ${planet.house}`;
-            }).join(', ');
-
-            const housesData = Object.keys(astroCalcRawData.data.houses).map(key => {
-                const house = astroCalcRawData.data.houses[key];
-                return `Casa ${house.number} en ${house.sign.name} a ${house.degree}°`;
-            }).join(', ');
-
-            const aspectsData = astroCalcRawData.data.aspects.all.map(aspect => {
-                const p1 = aspect.body1.name_en; // Nombre del planeta 1
-                const p2 = aspect.body2.name_en; // Nombre del planeta 2
-                const type = aspect.aspect.name_en; // Tipo de aspecto (ej. "Conjunction")
-                const orb = aspect.orb; // Orbe del aspecto
-                return `${p1} en ${type} con ${p2} (orbe ${orb}°)`;
-            }).join(', ');
-
-            finalAstroData = {
-                birthDate: birthDate,
-                birthTime: birthTime,
-                birthPlace: birthPlace,
-                userSex: userSex,
-                timezoneId: timezoneId,
-                rawOffsetHours: rawOffsetSeconds / 3600,
-                latitude: latitude,
-                longitude: longitude,
-                // Datos precisos de la API de cálculo
-                sunSign: astroCalcRawData.data.planets.sun.sign.name,
-                moonSign: astroCalcRawData.data.planets.moon.sign.name,
-                ascendant: astroCalcRawData.data.houses.house1.sign.name,
-                planetsPositions: planetsData, // Todas las posiciones de planetas mapeadas
-                housesCusps: housesData,      // Todas las cúspides de casas mapeadas
-                keyAspects: aspectsData       // Todos los aspectos mapeados
-            };
-
-            console.log("Datos astrológicos finales para Gemini:", JSON.stringify(finalAstroData, null, 2).substring(0, 500) + "...");
-
-        } catch (error) {
-            console.error("Error al llamar a la API de cálculo astrológico (Astro-API.com):", error.message);
-            return res.status(500).json({ message: `Error al obtener los cálculos astrológicos precisos. Detalles: ${error.message}` });
-        }
+        console.log("Datos astrológicos finales para Gemini (mapeados):", JSON.stringify(finalAstroData, null, 2).substring(0, 500) + "...");
 
 
         // --- 4. CONSTRUIR PROMPT PARA GEMINI CON DATOS PRECISOS ---
-        // El prompt ahora utiliza 'finalAstroData' con los datos REALES obtenidos de las APIs.
         const textPrompt = `Genera una interpretación completa de la carta astral basada en los siguientes datos de nacimiento:
         Fecha de Nacimiento: ${finalAstroData.birthDate}
-        Hora de Nacimiento: ${finalAstroData.birthTime}
+        Hora de Nacimiento: ${finalAstroData.birthTime} (Hora Local)
         Lugar de Nacimiento: ${finalAstroData.birthPlace}
         Sexo del Usuario: ${finalAstroData.userSex}
         Latitud: ${finalAstroData.latitude}
@@ -256,8 +226,7 @@ module.exports = async (req, res) => {
         Signo Solar: ${finalAstroData.sunSign}
         Signo Lunar: ${finalAstroData.moonSign}
         Ascendente: ${finalAstroData.ascendant}
-        Posiciones de Planetas: ${finalAstroData.planetsPositions}
-        Cúspides de Casas: ${finalAstroData.housesCusps}
+        Posiciones de Planetas y Casas: ${finalAstroData.planetsPositions}. Cúspides de Casas: ${finalAstroData.housesCusps}.
         Aspectos Clave: ${finalAstroData.keyAspects}
 
         La interpretación debe ser altamente profesional, profunda, narrativa y psicológicamente atractiva. Utiliza principios de Neuro-Linguistic Programming (PNL) para inspirar, captar la atención y motivar el crecimiento personal, fomentando una sensación agradable, mental y psicológicamente enriquecedora para el lector. El tono debe ser directo ("tú"). La interpretación debe ser sensible al género del usuario.
