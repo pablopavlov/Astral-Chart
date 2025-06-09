@@ -1,0 +1,26 @@
+{
+  "functions": {
+    "source": "functions",
+    "runtime": "nodejs18"
+  },
+  "hosting": {
+    "public": "public",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "/api/generateAstralChart",
+        "function": "generateAstralChart"
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}
+
+
